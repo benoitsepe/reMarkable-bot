@@ -23,6 +23,9 @@
     "typescript": "^3.7.4"
   },
   "dependencies": {
+    "dotenv": "^8.2.0",
+    "got": "^10.2.2",
+    "remarkable-typescript": "^1.0.4",
     "telegraf": "^3.35.0"
   }
 }
