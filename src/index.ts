@@ -48,11 +48,12 @@ bot.on('document', async (ctx) => {
   if (!ctx.message || !ctx.message.document) {
     return null;
   }
+  const { document } = ctx.message;
   if (ctx.message.document.mime_type !== 'application/pdf') {
     console.log(ctx.message.document.mime_type);
     return ctx.reply('This is not a PDF file');
   }
-  const { file_path: filePath } = await ctx.telegram.getFile(ctx.message.document.file_id);
+  const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
 
   // https://api.telegram.org/file/bot<token>/<file_path>
 
@@ -69,8 +70,8 @@ bot.on('document', async (ctx) => {
     readStream.on('end', async () => {
       const pdfBuffer = Buffer.concat(chunks);
       const client: Remarkable = getSession(ctx, 'client');
-      client.uploadPDF('test', pdfBuffer);
-      resolve(await ctx.reply('Done!'));
+      client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
+      resolve(await ctx.reply('Document uploaded!'));
     });
   });
 });
