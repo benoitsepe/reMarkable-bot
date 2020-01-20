@@ -50,7 +50,6 @@ bot.on('document', async (ctx) => {
   }
   const { document } = ctx.message;
   if (ctx.message.document.mime_type !== 'application/pdf') {
-    console.log(ctx.message.document.mime_type);
     return ctx.reply('This is not a PDF file');
   }
   const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
@@ -97,10 +96,9 @@ bot.command('ls', async (ctx) => {
   try {
     const client: Remarkable = getSession(ctx, 'client');
     const response = await client.getAllItems();
-    return ctx.reply(JSON.stringify(response[0]));
+    return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
   } catch {
     return null;
   }
 });
-bot.hears('hi', (ctx) => ctx.reply('Hey there'));
 bot.launch();
