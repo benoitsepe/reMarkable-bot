@@ -18,6 +18,7 @@ coverage
 
 # API keys and secrets
 .env
+db
 
 # Dependency directory
 node_modules

@@ -23,8 +23,10 @@
     "typescript": "^3.7.4"
   },
   "dependencies": {
+    "@types/node-persist": "^3.0.0",
     "dotenv": "^8.2.0",
     "got": "^10.2.2",
+    "node-persist": "^3.0.5",
     "remarkable-typescript": "^1.0.4",
     "telegraf": "^3.35.0"
   }

@@ -1,104 +1,119 @@
 import Telegraf, { ContextMessageUpdate } from 'telegraf';
 import { Remarkable } from 'remarkable-typescript';
 import got from 'got';
+import storage from 'node-persist';
 
 // Do this as early as possible
 require('dotenv').config();
 
-if (!process.env.BOT_TOKEN) {
-  throw Error('BOT_TOKEN missing in process.env');
-}
-
-type sessionType = {
-  [sessionId: string]: {
-    [key: string]: any,
-  },
-};
-
-let session: sessionType = {};
-
-const getSessionKey = (ctx: ContextMessageUpdate) => {
-  if (ctx.from && ctx.chat) {
-    return `${ctx.from.id}:${ctx.chat.id}`;
-  } if (ctx.from && ctx.inlineQuery) {
-    return `${ctx.from.id}:${ctx.from.id}`;
+(async () => {
+  if (!process.env.BOT_TOKEN) {
+    throw Error('BOT_TOKEN missing in process.env');
   }
-  throw Error('Bot didn\'t recognized this method of communication');
-};
 
-const getSession = (ctx: ContextMessageUpdate, key: string) => session[getSessionKey(ctx)][key];
-const setSession = (ctx: ContextMessageUpdate, key: string, value: any) => {
-  session = {
-    ...session,
-    [getSessionKey(ctx)]: session[getSessionKey(ctx)] ? {
-      ...session[getSessionKey(ctx)],
-      [key]: value,
-    } : {
-      [key]: value,
-    },
+  await storage.init({
+    dir: 'db',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    encoding: 'utf8',
+    logging: false, // can also be custom logging function
+    ttl: 24 * 3600,
+    expiredInterval: 2 * 60 * 1000, // every 2 minutes the process will clean-up the expired cache
+    forgiveParseErrors: false,
+  });
+
+  type sessionType = {
+    token: string,
   };
-};
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+  const getSessionKey = (ctx: ContextMessageUpdate) => {
+    if (ctx.from && ctx.chat) {
+      return `${ctx.from.id}:${ctx.chat.id}`;
+    } if (ctx.from && ctx.inlineQuery) {
+      return `${ctx.from.id}:${ctx.from.id}`;
+    }
+    throw Error('Bot didn\'t recognized this method of communication');
+  };
 
-bot.start((ctx) => ctx.reply('Welcome!'));
-bot.help((ctx) => ctx.reply('Send me a sticker'));
-bot.on('sticker', (ctx) => ctx.reply('👍'));
-bot.on('document', async (ctx) => {
-  if (!ctx.message || !ctx.message.document) {
-    return null;
-  }
-  const { document } = ctx.message;
-  if (ctx.message.document.mime_type !== 'application/pdf') {
-    return ctx.reply('This is not a PDF file');
-  }
-  const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
+  const getSession = async (ctx: ContextMessageUpdate, key: keyof sessionType) => (
+    await storage.getItem(getSessionKey(ctx)) as sessionType
+  )[key];
+  const setSession = async (ctx: ContextMessageUpdate, session: Partial<sessionType>) => {
+    const prevSession = await storage.getItem(getSessionKey(ctx)) as sessionType;
+    const newSession: sessionType = {
+      ...prevSession,
+      ...session,
+    };
+    await storage.setItem(getSessionKey(ctx), newSession);
+  };
 
-  // https://api.telegram.org/file/bot<token>/<file_path>
+  const getRemarkableObject = async (ctx: ContextMessageUpdate) => {
+    const token = await getSession(ctx, 'token');
+    return new Remarkable({ token });
+  };
 
-  const readStream = got.stream(`https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`);
+  const bot = new Telegraf(process.env.BOT_TOKEN);
 
-  return new Promise((resolve) => {
-    const chunks: any[] = [];
+  bot.start((ctx) => ctx.reply('Welcome!'));
+  bot.help((ctx) => ctx.reply('Send me a sticker'));
+  bot.on('sticker', (ctx) => ctx.reply('👍'));
+  bot.on('document', async (ctx) => {
+    if (!ctx.message || !ctx.message.document) {
+      return null;
+    }
+    const { document } = ctx.message;
+    if (ctx.message.document.mime_type !== 'application/pdf') {
+      return ctx.reply('This is not a PDF file');
+    }
+    const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
 
-    readStream.on('data', (chunk) => {
-      chunks.push(chunk);
-    });
+    // https://api.telegram.org/file/bot<token>/<file_path>
 
-    // Send the buffer or you can put it into a var
-    readStream.on('end', async () => {
-      const pdfBuffer = Buffer.concat(chunks);
-      const client: Remarkable = getSession(ctx, 'client');
-      client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
-      resolve(await ctx.reply('Document uploaded!'));
+    const readStream = got.stream(`https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`);
+
+    return new Promise((resolve) => {
+      const chunks: any[] = [];
+
+      readStream.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
+
+      // Send the buffer or you can put it into a var
+      readStream.on('end', async () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        const client: Remarkable = await getRemarkableObject(ctx);
+        client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
+        resolve(await ctx.reply('Document uploaded!'));
+      });
     });
   });
-});
-bot.command('register', async (ctx) => {
-  if (!ctx.message || !ctx.message.text) {
-    return null;
-  }
+  bot.command('register', async (ctx) => {
+    if (!ctx.message || !ctx.message.text) {
+      return null;
+    }
 
-  const argumentsCommand = ctx.message.text.split(' ');
-  if (argumentsCommand.length !== 2) {
-    return null;
-  }
-  await ctx.reply('Working on it...');
-  const code = argumentsCommand[1];
+    const argumentsCommand = ctx.message.text.split(' ');
+    if (argumentsCommand.length !== 2) {
+      return null;
+    }
+    await ctx.reply('Working on it...');
+    const code = argumentsCommand[1];
 
-  const client = new Remarkable();
-  setSession(ctx, 'client', client);
+    const client = new Remarkable();
+    const token = await client.register({ code });
 
-  await client.register({ code });
-  return ctx.reply('Done!');
-});
-bot.command('ls', async (ctx) => {
-  try {
-    const client: Remarkable = getSession(ctx, 'client');
-    const response = await client.getAllItems();
-    return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
-  } catch {
-    return null;
-  }
-});
-bot.launch();
+    await setSession(ctx, { token });
+
+    return ctx.reply('Done!');
+  });
+  bot.command('ls', async (ctx) => {
+    try {
+      const client = await getRemarkableObject(ctx);
+      const response = await client.getAllItems();
+      return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
+    } catch {
+      return null;
+    }
+  });
+  bot.launch();
+})();
