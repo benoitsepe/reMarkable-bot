@@ -19,6 +19,7 @@ coverage
 # API keys and secrets
 .env
 db
+*.tar
 
 # Dependency directory
 node_modules
