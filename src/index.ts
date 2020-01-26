@@ -17,7 +17,6 @@ require('dotenv').config();
     parse: JSON.parse,
     encoding: 'utf8',
     logging: false, // can also be custom logging function
-    ttl: 24 * 3600,
     expiredInterval: 2 * 60 * 1000, // every 2 minutes the process will clean-up the expired cache
     forgiveParseErrors: false,
   });
@@ -52,67 +51,84 @@ require('dotenv').config();
     return new Remarkable({ token });
   };
 
+  const sendHelp = async (ctx: ContextMessageUpdate) => {
+    await ctx.reply('/register [CODE] : register your remarkable. You can generate the code at https://my.remarkable.com/connect/remarkable');
+    await ctx.reply('/ls : Display all your files');
+    await ctx.reply('Send a PDF file to upload it');
+  };
+
   const bot = new Telegraf(process.env.BOT_TOKEN);
 
-  bot.start((ctx) => ctx.reply('Welcome!'));
-  bot.help((ctx) => ctx.reply('Send me a sticker'));
-  bot.on('sticker', (ctx) => ctx.reply('👍'));
+  bot.start(async (ctx) => {
+    await ctx.reply('Welcome!');
+    await sendHelp(ctx);
+  });
+  bot.help(sendHelp);
   bot.on('document', async (ctx) => {
-    if (!ctx.message || !ctx.message.document) {
-      return null;
-    }
-    const { document } = ctx.message;
-    if (ctx.message.document.mime_type !== 'application/pdf') {
-      return ctx.reply('This is not a PDF file');
-    }
-    const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
+    try {
+      if (!ctx.message || !ctx.message.document) {
+        return null;
+      }
+      const { document } = ctx.message;
+      if (ctx.message.document.mime_type !== 'application/pdf') {
+        return ctx.reply('This is not a PDF file');
+      }
+      const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
 
-    // https://api.telegram.org/file/bot<token>/<file_path>
+      const readStream = got.stream(`https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`);
 
-    const readStream = got.stream(`https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`);
+      return new Promise((resolve) => {
+        const chunks: any[] = [];
 
-    return new Promise((resolve) => {
-      const chunks: any[] = [];
+        readStream.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
 
-      readStream.on('data', (chunk) => {
-        chunks.push(chunk);
+        // Send the buffer or you can put it into a var
+        readStream.on('end', async () => {
+          const pdfBuffer = Buffer.concat(chunks);
+          const client: Remarkable = await getRemarkableObject(ctx);
+          client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
+          resolve(await ctx.reply('Document uploaded!'));
+        });
       });
-
-      // Send the buffer or you can put it into a var
-      readStream.on('end', async () => {
-        const pdfBuffer = Buffer.concat(chunks);
-        const client: Remarkable = await getRemarkableObject(ctx);
-        client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
-        resolve(await ctx.reply('Document uploaded!'));
-      });
-    });
+    } catch (error) {
+      console.log(error);
+      return ctx.reply('An error has occured. The admin has been notified!');
+    }
   });
   bot.command('register', async (ctx) => {
-    if (!ctx.message || !ctx.message.text) {
-      return null;
+    try {
+      if (!ctx.message || !ctx.message.text) {
+        return null;
+      }
+
+      const argumentsCommand = ctx.message.text.split(' ');
+      if (argumentsCommand.length !== 2) {
+        return null;
+      }
+      await ctx.reply('Working on it...');
+      const code = argumentsCommand[1];
+
+      const client = new Remarkable();
+      const token = await client.register({ code });
+
+      await setSession(ctx, { token });
+
+      return ctx.reply('Done!');
+    } catch (error) {
+      console.log(error);
+      return ctx.reply('An error has occured. The admin has been notified!');
     }
-
-    const argumentsCommand = ctx.message.text.split(' ');
-    if (argumentsCommand.length !== 2) {
-      return null;
-    }
-    await ctx.reply('Working on it...');
-    const code = argumentsCommand[1];
-
-    const client = new Remarkable();
-    const token = await client.register({ code });
-
-    await setSession(ctx, { token });
-
-    return ctx.reply('Done!');
   });
   bot.command('ls', async (ctx) => {
     try {
       const client = await getRemarkableObject(ctx);
       const response = await client.getAllItems();
       return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
-    } catch {
-      return null;
+    } catch (error) {
+      console.log(error);
+      return ctx.reply('An error has occured. The admin has been notified!');
     }
   });
   bot.launch();
