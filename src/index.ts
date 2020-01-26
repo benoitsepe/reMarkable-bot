@@ -65,71 +65,60 @@ require('dotenv').config();
   });
   bot.help(sendHelp);
   bot.on('document', async (ctx) => {
-    try {
-      if (!ctx.message || !ctx.message.document) {
-        return null;
-      }
-      const { document } = ctx.message;
-      if (ctx.message.document.mime_type !== 'application/pdf') {
-        return ctx.reply('This is not a PDF file');
-      }
-      const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
-
-      const readStream = got.stream(`https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`);
-
-      return new Promise((resolve) => {
-        const chunks: any[] = [];
-
-        readStream.on('data', (chunk) => {
-          chunks.push(chunk);
-        });
-
-        // Send the buffer or you can put it into a var
-        readStream.on('end', async () => {
-          const pdfBuffer = Buffer.concat(chunks);
-          const client: Remarkable = await getRemarkableObject(ctx);
-          client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
-          resolve(await ctx.reply('Document uploaded!'));
-        });
-      });
-    } catch (error) {
-      console.log(error);
-      return ctx.reply('An error has occured. The admin has been notified!');
+    if (!ctx.message || !ctx.message.document) {
+      return null;
     }
+    const { document } = ctx.message;
+    if (ctx.message.document.mime_type !== 'application/pdf') {
+      return ctx.reply('This is not a PDF file');
+    }
+    const { file_path: filePath } = await ctx.telegram.getFile(document.file_id);
+
+    const readStream = got.stream(`https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`);
+
+    return new Promise((resolve) => {
+      const chunks: any[] = [];
+
+      readStream.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
+
+      // Send the buffer or you can put it into a var
+      readStream.on('end', async () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        const client: Remarkable = await getRemarkableObject(ctx);
+        client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
+        resolve(await ctx.reply('Document uploaded!'));
+      });
+    });
   });
   bot.command('register', async (ctx) => {
-    try {
-      if (!ctx.message || !ctx.message.text) {
-        return null;
-      }
-
-      const argumentsCommand = ctx.message.text.split(' ');
-      if (argumentsCommand.length !== 2) {
-        return null;
-      }
-      await ctx.reply('Working on it...');
-      const code = argumentsCommand[1];
-
-      const client = new Remarkable();
-      const token = await client.register({ code });
-
-      await setSession(ctx, { token });
-
-      return ctx.reply('Done!');
-    } catch (error) {
-      console.log(error);
-      return ctx.reply('An error has occured. The admin has been notified!');
+    if (!ctx.message || !ctx.message.text) {
+      return null;
     }
+
+    const argumentsCommand = ctx.message.text.split(' ');
+    if (argumentsCommand.length !== 2) {
+      return ctx.reply('You need to specify the code to pair your reMarkable as a parameter');
+    }
+    await ctx.reply('Working on it...');
+    const code = argumentsCommand[1];
+
+    const client = new Remarkable();
+    const token = await client.register({ code });
+
+    await setSession(ctx, { token });
+
+    return ctx.reply('Done!');
   });
   bot.command('ls', async (ctx) => {
-    try {
-      const client = await getRemarkableObject(ctx);
-      const response = await client.getAllItems();
-      return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
-    } catch (error) {
-      console.log(error);
-      return ctx.reply('An error has occured. The admin has been notified!');
-    }
+    const client = await getRemarkableObject(ctx);
+    const response = await client.getAllItems();
+    return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
+  });
+  bot.catch((err: Error, ctx: ContextMessageUpdate) => {
+    console.log(err);
+    return ctx.reply('An error has occured. The admin has been notified!');
   });
   bot.launch();
 })();
