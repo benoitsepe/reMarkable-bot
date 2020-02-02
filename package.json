@@ -27,7 +27,7 @@
     "dotenv": "^8.2.0",
     "got": "^10.2.2",
     "node-persist": "^3.0.5",
-    "remarkable-typescript": "^1.0.4",
+    "remarkable-typescript": "^1.0.5",
     "telegraf": "^3.35.0"
   }
 }

@@ -1353,10 +1353,10 @@ regexpp@^3.0.0:
   resolved "https://registry.yarnpkg.com/regexpp/-/regexpp-3.0.0.tgz#dd63982ee3300e67b41c1956f850aa680d9d330e"
   integrity sha512-Z+hNr7RAVWxznLPuA7DIh8UNX1j9CDrUQxskw9IrBE1Dxue2lyXT+shqEIeLUjrokxIP8CMy1WkjgG3rTsd5/g==
 
-remarkable-typescript@^1.0.4:
-  version "1.0.4"
-  resolved "https://registry.yarnpkg.com/remarkable-typescript/-/remarkable-typescript-1.0.4.tgz#4b17617b6ca1dfdab487de8da417fb1f6bd5bdb0"
-  integrity sha512-fM5TfZ6mrMcOIPYxbtys4fqqPP8IaIEyvMAH2w90MNpJodJoBGtMqqqBRhjtstMwC6x5YT0SWyPBwvtDoU/xPg==
+remarkable-typescript@^1.0.5:
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/remarkable-typescript/-/remarkable-typescript-1.0.5.tgz#86a385266bf67e2a40bf6f167dea5feb9e9dddc2"
+  integrity sha512-pdJhVU5fL7XSbX6kKJC/uj5GgpaO4wihsTs5EmYth24bJVcuXY4YDgUwgwCT8DItmGyAX8h/QrVnYX7s4Nvf2A==
   dependencies:
     "@types/jszip" "^3.1.7"
     "@types/uuid" "^3.4.6"

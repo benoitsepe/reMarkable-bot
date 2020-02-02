@@ -22,14 +22,19 @@ require('dotenv').config();
   });
 
   type sessionType = {
+    file: Buffer,
+    handle: string,
     token: string,
   };
 
   const getSessionKey = (ctx: ContextMessageUpdate) => {
-    if (ctx.from && ctx.chat) {
-      return `${ctx.from.id}:${ctx.chat.id}`;
-    } if (ctx.from && ctx.inlineQuery) {
-      return `${ctx.from.id}:${ctx.from.id}`;
+    // if (ctx.from && ctx.chat) {
+    //   return `${ctx.from.id}:${ctx.chat.id}`;
+    // } if (ctx.from && ctx.inlineQuery) {
+    //   return `${ctx.from.id}:${ctx.from.id}`;
+    // }
+    if (ctx.from) {
+      return `${ctx.from.id}`;
     }
     throw Error('Bot didn\'t recognized this method of communication');
   };
@@ -37,23 +42,35 @@ require('dotenv').config();
   const getSession = async (ctx: ContextMessageUpdate, key: keyof sessionType) => (
     await storage.getItem(getSessionKey(ctx)) as sessionType
   )[key];
-  const setSession = async (ctx: ContextMessageUpdate, session: Partial<sessionType>) => {
-    const prevSession = await storage.getItem(getSessionKey(ctx)) as sessionType;
+  const setSession = async (sessionKey: string, session: Partial<sessionType>) => {
+    const prevSession = await storage.getItem(sessionKey) as sessionType;
     const newSession: sessionType = {
       ...prevSession,
       ...session,
     };
-    await storage.setItem(getSessionKey(ctx), newSession);
+    await storage.setItem(sessionKey, newSession);
+  };
+  const setSessionWithCtx = async (ctx: ContextMessageUpdate, session: Partial<sessionType>) => {
+    await setSession(getSessionKey(ctx), session);
   };
 
   const getRemarkableObject = async (ctx: ContextMessageUpdate) => {
-    const token = await getSession(ctx, 'token');
+    const token = await getSession(ctx, 'token') as string;
     return new Remarkable({ token });
+  };
+
+  const doesHandleExist = async (handle: string) => {
+    const matches = (await storage.keys()).filter(async (key) => {
+      const item = (await storage.getItem(key)) as sessionType;
+      return item.handle && item.handle === handle;
+    });
+    return matches.length > 0 ? matches[0] : null;
   };
 
   const sendHelp = async (ctx: ContextMessageUpdate) => {
     await ctx.reply('/register [CODE] : register your remarkable. You can generate the code at https://my.remarkable.com/connect/remarkable');
     await ctx.reply('/ls : Display all your files');
+    await ctx.reply('/share [FILE ID] [USERNAME] : Send one of your file to the following telegram user');
     await ctx.reply('Send a PDF file to upload it');
   };
 
@@ -107,7 +124,7 @@ require('dotenv').config();
     const client = new Remarkable();
     const token = await client.register({ code });
 
-    await setSession(ctx, { token });
+    await setSessionWithCtx(ctx, { token });
 
     return ctx.reply('Done!');
   });
@@ -115,6 +132,45 @@ require('dotenv').config();
     const client = await getRemarkableObject(ctx);
     const response = await client.getAllItems();
     return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
+  });
+  bot.command('share', async (ctx) => {
+    if (!ctx.message || !ctx.message.text) {
+      return null;
+    }
+    const argumentsCommand = ctx.message.text.split(' ');
+    if (argumentsCommand.length !== 3) {
+      return ctx.reply('You need to specify the ID of the document, followed by the handle of the user');
+    }
+    await ctx.reply('Working on it...');
+    const id = argumentsCommand[1];
+    const handleNotFiltered = argumentsCommand[2];
+    const handle = handleNotFiltered.slice(0, 1) === '@' ? handleNotFiltered.slice(1) : handleNotFiltered;
+
+    const client = await getRemarkableObject(ctx);
+
+    const file = await client.downloadZip(id) as Buffer;
+
+    const chatId = await doesHandleExist(handle);
+    if (chatId) {
+      setSession(chatId, { file });
+      bot.telegram.sendMessage(chatId, `@${ctx.from?.username} has send you a document. /accept or /refuse`);
+      return ctx.reply(`The file has been sent to @${ctx.from?.username}`);
+    }
+    return ctx.reply('User was not found');
+  });
+  bot.command('accept', async (ctx) => {
+    await ctx.reply('Working on it...');
+    const file = await getSession(ctx, 'file') as Buffer;
+    if (!file) {
+      return ctx.reply('No document in queue');
+    }
+    const client: Remarkable = await getRemarkableObject(ctx);
+    await client.uploadPDF(`Shared file ${(new Date()).toDateString()}`, file);
+    return ctx.reply('File uploaded to your reMarkable');
+  });
+  bot.command('refuse', async (ctx) => {
+    await setSessionWithCtx(ctx, { file: undefined });
+    return ctx.reply('The file has been rejected');
   });
   bot.catch((err: Error, ctx: ContextMessageUpdate) => {
     console.log(err);
