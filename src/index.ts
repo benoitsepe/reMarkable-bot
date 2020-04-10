@@ -1,4 +1,5 @@
 import Telegraf, { ContextMessageUpdate } from 'telegraf';
+import rateLimit from 'telegraf-ratelimit';
 import { Remarkable } from 'remarkable-typescript';
 import got from 'got';
 import storage from 'node-persist';
@@ -10,6 +11,11 @@ require('dotenv').config();
   if (!process.env.BOT_TOKEN) {
     throw Error('BOT_TOKEN missing in process.env');
   }
+  if (!process.env.WHITELISTED) {
+    throw Error('WHITELISTED missing in process.env');
+  }
+
+  const whitelistedHandles = process.env.WHITELISTED.split(' ');
 
   await storage.init({
     dir: 'db',
@@ -22,7 +28,7 @@ require('dotenv').config();
   });
 
   type sessionType = {
-    file: Buffer,
+    file?: string,
     handle: string,
     token: string,
   };
@@ -60,21 +66,36 @@ require('dotenv').config();
   };
 
   const doesHandleExist = async (handle: string) => {
-    const matches = (await storage.keys()).filter(async (key) => {
+    const items = await Promise.all((await storage.keys()).map(async (key) => {
       const item = (await storage.getItem(key)) as sessionType;
-      return item.handle && item.handle === handle;
-    });
-    return matches.length > 0 ? matches[0] : null;
+      return { key, handle: item.handle };
+    }));
+    const matches = items.filter((item) => item.handle === handle);
+    return matches.length > 0 ? matches[0].key : null;
   };
 
   const sendHelp = async (ctx: ContextMessageUpdate) => {
     await ctx.reply('/register [CODE] : register your remarkable. You can generate the code at https://my.remarkable.com/connect/remarkable');
-    await ctx.reply('/ls : Display all your files');
+    await ctx.reply('/search [TERM] : Search a document across your files');
     await ctx.reply('/share [FILE ID] [USERNAME] : Send one of your file to the following telegram user');
     await ctx.reply('Send a PDF file to upload it');
   };
 
+  // Set limit to 1 message per 3 seconds
+  const limitConfig = {
+    window: 3000,
+    limit: 1,
+    onLimitExceeded: (ctx: ContextMessageUpdate) => ctx.reply('Rate limit exceeded'),
+  };
+
   const bot = new Telegraf(process.env.BOT_TOKEN);
+  bot.use(rateLimit(limitConfig));
+  bot.use(async (ctx, next) => {
+    if (ctx.from?.username && whitelistedHandles.includes(ctx.from?.username)) {
+      return next ? next() : null;
+    }
+    return ctx.reply('You are not whitelisted');
+  });
 
   bot.start(async (ctx) => {
     await ctx.reply('Welcome!');
@@ -104,8 +125,8 @@ require('dotenv').config();
       readStream.on('end', async () => {
         const pdfBuffer = Buffer.concat(chunks);
         const client: Remarkable = await getRemarkableObject(ctx);
-        client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
-        resolve(await ctx.reply('Document uploaded!'));
+        const documentId = await client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
+        resolve(await ctx.reply(`Document uploaded! ID: \`${documentId}\``, { parse_mode: 'Markdown' }));
       });
     });
   });
@@ -124,14 +145,34 @@ require('dotenv').config();
     const client = new Remarkable();
     const token = await client.register({ code });
 
-    await setSessionWithCtx(ctx, { token });
+    await setSessionWithCtx(ctx, { token, handle: ctx.from?.username });
 
     return ctx.reply('Done!');
   });
-  bot.command('ls', async (ctx) => {
+  bot.command('search', async (ctx) => {
+    if (!ctx.message || !ctx.message.text) {
+      return null;
+    }
+    const argumentsCommand = ctx.message.text.split(' ', 2);
+    if (argumentsCommand.length !== 2) {
+      return ctx.reply('You need to specify the term you are searching');
+    }
+
+    const cleanUp = (sentence: string) => sentence.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+    const termCleanedUp = cleanUp(argumentsCommand[1]);
+
     const client = await getRemarkableObject(ctx);
     const response = await client.getAllItems();
-    return Promise.all(response.map((item) => ctx.reply(JSON.stringify(item))));
+
+    const results = response.filter(
+      (item) => cleanUp(item.VissibleName).search(termCleanedUp) !== -1,
+    ).slice(0, 5);
+
+    return results.length > 0 ? Promise.all(results.map((item) => ctx.reply(
+      `ID: <code>${item.ID}</code>\nName: ${item.VissibleName}\nType: ${item.Type}\n${item.BlobURLGet ? `<a href="${item.BlobURLGet}">Download</a>` : null}`,
+      { parse_mode: 'HTML' },
+    ))) : ctx.reply('Found nothing');
   });
   bot.command('share', async (ctx) => {
     if (!ctx.message || !ctx.message.text) {
@@ -152,20 +193,22 @@ require('dotenv').config();
 
     const chatId = await doesHandleExist(handle);
     if (chatId) {
-      setSession(chatId, { file });
+      setSession(chatId, { file: file.toString('binary') });
       bot.telegram.sendMessage(chatId, `@${ctx.from?.username} has send you a document. /accept or /refuse`);
-      return ctx.reply(`The file has been sent to @${ctx.from?.username}`);
+      return ctx.reply(`The file has been sent to @${handle}`);
     }
     return ctx.reply('User was not found');
   });
   bot.command('accept', async (ctx) => {
     await ctx.reply('Working on it...');
-    const file = await getSession(ctx, 'file') as Buffer;
-    if (!file) {
+    const stringFile = await getSession(ctx, 'file') as string;
+    if (!stringFile) {
       return ctx.reply('No document in queue');
     }
+    const file = Buffer.from(stringFile, 'binary');
     const client: Remarkable = await getRemarkableObject(ctx);
     await client.uploadPDF(`Shared file ${(new Date()).toDateString()}`, file);
+    await setSessionWithCtx(ctx, { file: undefined });
     return ctx.reply('File uploaded to your reMarkable');
   });
   bot.command('refuse', async (ctx) => {
