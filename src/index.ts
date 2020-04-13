@@ -61,8 +61,10 @@ require('dotenv').config();
   };
 
   const getRemarkableObject = async (ctx: ContextMessageUpdate) => {
-    const token = await getSession(ctx, 'token') as string;
-    return new Remarkable({ token });
+    const deviceToken = await getSession(ctx, 'token') as string;
+    const client = new Remarkable({ deviceToken });
+    await client.refreshToken();
+    return client;
   };
 
   const doesHandleExist = async (handle: string) => {
@@ -207,9 +209,9 @@ require('dotenv').config();
     }
     const file = Buffer.from(stringFile, 'binary');
     const client: Remarkable = await getRemarkableObject(ctx);
-    await client.uploadPDF(`Shared file ${(new Date()).toDateString()}`, file);
+    const id = await client.uploadPDF(`Shared file ${(new Date()).toDateString()}`, file);
     await setSessionWithCtx(ctx, { file: undefined });
-    return ctx.reply('File uploaded to your reMarkable');
+    return ctx.reply(`File uploaded to your reMarkable with the ID \`${id}\``, { parse_mode: 'Markdown' });
   });
   bot.command('refuse', async (ctx) => {
     await setSessionWithCtx(ctx, { file: undefined });
