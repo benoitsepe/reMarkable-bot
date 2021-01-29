@@ -1,9 +1,6 @@
 FROM node:alpine
 WORKDIR /usr/remarkable-bot
-COPY package.json .
-COPY yarn.lock .
-COPY .env .
-RUN yarn
 COPY . .
-RUN npx tsc
+RUN yarn
+RUN yarn prepare
 CMD ["node", "./dist/index.js"]
