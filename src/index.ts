@@ -1,4 +1,4 @@
-import Telegraf, { ContextMessageUpdate } from 'telegraf';
+import { Context, Telegraf } from 'telegraf';
 import rateLimit from 'telegraf-ratelimit';
 import { Remarkable } from 'remarkable-typescript';
 import got from 'got';
@@ -33,7 +33,7 @@ require('dotenv').config();
     token: string,
   };
 
-  const getSessionKey = (ctx: ContextMessageUpdate) => {
+  const getSessionKey = (ctx: Context) => {
     // if (ctx.from && ctx.chat) {
     //   return `${ctx.from.id}:${ctx.chat.id}`;
     // } if (ctx.from && ctx.inlineQuery) {
@@ -45,7 +45,7 @@ require('dotenv').config();
     throw Error('Bot didn\'t recognized this method of communication');
   };
 
-  const getSession = async (ctx: ContextMessageUpdate, key: keyof sessionType) => (
+  const getSession = async (ctx: Context, key: keyof sessionType) => (
     await storage.getItem(getSessionKey(ctx)) as sessionType
   )[key];
   const setSession = async (sessionKey: string, session: Partial<sessionType>) => {
@@ -56,11 +56,11 @@ require('dotenv').config();
     };
     await storage.setItem(sessionKey, newSession);
   };
-  const setSessionWithCtx = async (ctx: ContextMessageUpdate, session: Partial<sessionType>) => {
+  const setSessionWithCtx = async (ctx: Context, session: Partial<sessionType>) => {
     await setSession(getSessionKey(ctx), session);
   };
 
-  const getRemarkableObject = async (ctx: ContextMessageUpdate) => {
+  const getRemarkableObject = async (ctx: Context) => {
     const deviceToken = await getSession(ctx, 'token') as string;
     const client = new Remarkable({ deviceToken });
     await client.refreshToken();
@@ -76,7 +76,7 @@ require('dotenv').config();
     return matches.length > 0 ? matches[0].key : null;
   };
 
-  const sendHelp = async (ctx: ContextMessageUpdate) => {
+  const sendHelp = async (ctx: Context) => {
     await ctx.reply('/register [CODE] : register your remarkable. You can generate the code at https://my.remarkable.com/connect/remarkable');
     await ctx.reply('/search [TERM] : Search a document across your files');
     await ctx.reply('/share [FILE ID] [USERNAME] : Send one of your file to the following telegram user');
@@ -87,7 +87,7 @@ require('dotenv').config();
   const limitConfig = {
     window: 3000,
     limit: 1,
-    onLimitExceeded: (ctx: ContextMessageUpdate) => ctx.reply('Rate limit exceeded'),
+    onLimitExceeded: (ctx: Context) => ctx.reply('Rate limit exceeded'),
   };
 
   const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -217,9 +217,9 @@ require('dotenv').config();
     await setSessionWithCtx(ctx, { file: undefined });
     return ctx.reply('The file has been rejected');
   });
-  bot.catch((err: Error, ctx: ContextMessageUpdate) => {
+  bot.catch(async (err: unknown, ctx: Context) => {
     console.log(err);
-    return ctx.reply('An error has occured. The admin has been notified!');
+    await ctx.reply('An error has occured. The admin has been notified!');
   });
   bot.launch();
 })();
