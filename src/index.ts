@@ -3,6 +3,7 @@ import rateLimit from 'telegraf-ratelimit';
 import { Remarkable } from 'remarkable-typescript';
 import got from 'got';
 import storage from 'node-persist';
+import { v4 as uuidv4 } from 'uuid';
 
 // Do this as early as possible
 require('dotenv').config();
@@ -127,7 +128,7 @@ require('dotenv').config();
       readStream.on('end', async () => {
         const pdfBuffer = Buffer.concat(chunks);
         const client: Remarkable = await getRemarkableObject(ctx);
-        const documentId = await client.uploadPDF(document.file_name ? document.file_name : 'File uploaded', pdfBuffer);
+        const documentId = await client.uploadPDF(document.file_name || 'File uploaded', uuidv4(), pdfBuffer);
         resolve(await ctx.reply(`Document uploaded! ID: \`${documentId}\``, { parse_mode: 'Markdown' }));
       });
     });
@@ -209,7 +210,7 @@ require('dotenv').config();
     }
     const file = Buffer.from(stringFile, 'binary');
     const client: Remarkable = await getRemarkableObject(ctx);
-    const id = await client.uploadPDF(`Shared file ${(new Date()).toDateString()}`, file);
+    const id = await client.uploadPDF(`Shared file ${(new Date()).toDateString()}`, uuidv4(), file);
     await setSessionWithCtx(ctx, { file: undefined });
     return ctx.reply(`File uploaded to your reMarkable with the ID \`${id}\``, { parse_mode: 'Markdown' });
   });
