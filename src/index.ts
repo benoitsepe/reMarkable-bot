@@ -78,7 +78,7 @@ require('dotenv').config();
   };
 
   const sendHelp = async (ctx: Context) => {
-    await ctx.reply('/register [CODE] : register your remarkable. You can generate the code at https://my.remarkable.com/connect/remarkable');
+    await ctx.reply('/register [CODE] : register your remarkable. You can generate the code at https://my.remarkable.com/device/desktop/connect');
     await ctx.reply('/search [TERM] : Search a document across your files');
     await ctx.reply('/share [FILE ID] [USERNAME] : Send one of your file to the following telegram user');
     await ctx.reply('Send a PDF file to upload it');
